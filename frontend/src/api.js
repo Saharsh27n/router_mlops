@@ -21,11 +21,11 @@ export const api = {
   health: () => request('/health'),
   stats: () => request('/stats'),
   recent: (limit = 25) => request(`/requests/recent?limit=${limit}`),
-  chat: (query, { threshold, noCascade } = {}) =>
+  chat: (query, { threshold, noCascade, strategy = 'hybrid' } = {}) =>
     request('/v1/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ query, threshold, no_cascade: noCascade }),
+      body: JSON.stringify({ query, threshold, no_cascade: noCascade, strategy }),
     }),
   drift: () => request('/drift'),
   simulateDrift: () => request('/admin/simulate-drift', { method: 'POST' }),

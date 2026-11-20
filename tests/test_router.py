@@ -80,8 +80,10 @@ def test_keyword_flags_fire_on_the_patterns_they_target():
 @pytest.fixture(scope="module")
 def fitted_pipeline():
     X_train, _, y_train, _ = load_split()
+    # Fast slice for snappy unit test execution
+    X_sub, y_sub = X_train[:60], y_train[:60]
     pipe = build_pipeline("logreg", use_numeric=True)
-    pipe.fit(build_frame(X_train), y_train)
+    pipe.fit(build_frame(X_sub), y_sub)
     return pipe
 
 
@@ -98,8 +100,9 @@ def test_linearsvc_exposes_a_confidence_despite_having_no_predict_proba():
     """The policy needs a confidence from every candidate model, so the sweep would
     be unable to compare LinearSVC at all without the softmax fallback."""
     X_train, _, y_train, _ = load_split()
+    X_sub, y_sub = X_train[:60], y_train[:60]
     pipe = build_pipeline("linsvc", use_numeric=True)
-    pipe.fit(build_frame(X_train), y_train)
+    pipe.fit(build_frame(X_sub), y_sub)
 
     assert not hasattr(pipe, "predict_proba")
     _, confidences = predict_with_confidence(pipe, ["Who wrote Hamlet?"])

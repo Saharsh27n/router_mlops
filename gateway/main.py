@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from gateway import cascade, db, drift_demo, metrics, security
 from gateway.config import settings
+from gateway.hybrid_router import hybrid_router
 from gateway.providers import ProviderPool
 from gateway.router_service import router_service
 from router import drift, policy
@@ -65,6 +66,10 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=8000)
+    strategy: str = Field(
+        default="hybrid",
+        description="Routing strategy: 'hybrid' (ML + SLM fallback), 'ml_fast' (ML only), or 'llm_semantic' (SLM only).",
+    )
     threshold: float | None = Field(
         default=None,
         ge=0.0,
@@ -82,6 +87,9 @@ class RoutingInfo(BaseModel):
     confidence: float
     model: str
     reason: str
+    strategy: str = "hybrid"
+    slm_consulted: bool = False
+    routing_latency_ms: float = 0.0
     escalated: bool = False
     cached: bool = False
     redactions: int = 0
@@ -161,18 +169,27 @@ async def _handle_chat(request: ChatRequest) -> ChatResponse:
         kind = placeholder.strip("<>").rsplit("_", 1)[0]
         metrics.PII_REDACTIONS.labels(kind=kind).inc()
 
-    label, confidence = router_service.predict(safe_query)
-    decision = policy.decide(label, confidence, threshold)
+    routing_result = await hybrid_router.route(
+        query=safe_query,
+        provider_pool=pool,
+        strategy=request.strategy,
+        threshold=threshold,
+    )
+    label = routing_result.predicted_label
+    confidence = routing_result.confidence
+    served_model = routing_result.model
+    reason = routing_result.reason
+    slm_consulted = routing_result.slm_consulted
+    routing_latency_ms = routing_result.routing_latency_ms
 
-    completion = await pool.complete(decision.model, safe_query)
-    served_model = decision.model
-    reason = decision.reason
+    completion = await pool.complete(served_model, safe_query)
     total_cost = completion.cost_usd
     escalated = False
 
     # Cascade: the routing decision was made before any answer existed, so check the
     # cheap model's output and retry on the large model if it looks like a failure.
-    if decision.model == policy.CHEAP and not request.no_cascade:
+    is_cheap_model = served_model in (policy.CHEAP, policy.MODEL_FAST)
+    if is_cheap_model and not request.no_cascade:
         verdict = cascade.verify(safe_query, completion.text)
         if verdict.escalate:
             escalated = True
@@ -183,7 +200,7 @@ async def _handle_chat(request: ChatRequest) -> ChatResponse:
             total_cost += retry.cost_usd
             completion = retry
             served_model = policy.EXPENSIVE
-            reason = f"{decision.reason} -> escalated ({verdict.reason})"
+            reason = f"{reason} -> escalated ({verdict.reason})"
 
     # The model only ever saw placeholders, so rehydrate before the answer reaches the
     # user -- the redaction is invisible to them even though it protected the request.
@@ -231,6 +248,9 @@ async def _handle_chat(request: ChatRequest) -> ChatResponse:
             confidence=confidence,
             model=served_model,
             reason=reason,
+            strategy=request.strategy,
+            slm_consulted=slm_consulted,
+            routing_latency_ms=routing_latency_ms,
             escalated=escalated,
             redactions=redaction.count,
             flagged=flagged,

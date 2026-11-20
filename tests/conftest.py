@@ -15,6 +15,7 @@ _TMP = Path(tempfile.mkdtemp(prefix="smartroute-tests-"))
 
 os.environ["MODEL_SOURCE"] = "local"
 os.environ["FORCE_MOCK"] = "true"
+os.environ["FAST_MOCK"] = "true"
 os.environ["DB_PATH"] = str(_TMP / "gateway.db")
 
 import pytest  # noqa: E402
@@ -42,3 +43,9 @@ def client_no_auth(client):
     bare = TestClient(app)
     bare.headers.pop("X-API-Key", None)
     return bare
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Ensure immediate process exit on Windows to avoid lingering daemon thread hangs."""
+    import os
+    os._exit(exitstatus)

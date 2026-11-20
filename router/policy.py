@@ -14,23 +14,66 @@ from dataclasses import dataclass
 CHEAP = os.getenv("MODEL_CHEAP", "openai/gpt-oss-20b")
 EXPENSIVE = os.getenv("MODEL_EXPENSIVE", "openai/gpt-oss-120b")
 
-# Per-million-token rates in USD, from the provider's published price list.
-#
-# These are the one set of numbers in the project that cannot be derived from the code
-# or the data, so they are isolated here, overridable from the environment, and quoted
-# with their source in RESULTS.md. Every cost figure the project reports is a function
-# of exactly these six constants and measured token counts -- change them and every
-# reported number moves consistently, because nothing else hard-codes a price.
+# Capability fleet models
+MODEL_FAST = os.getenv("MODEL_FAST", "openai/gpt-oss-20b")
+MODEL_BALANCED = os.getenv("MODEL_BALANCED", "openai/gpt-oss-120b")
+MODEL_REASONING = os.getenv("MODEL_REASONING", "openai/gpt-oss-120b")
+MODEL_CODE = os.getenv("MODEL_CODE", "qwen/qwen3.8-27b")
+
+# Legacy compatibility models
+LEGACY_CHEAP = "openai/gpt-oss-20b"
+LEGACY_EXPENSIVE = "openai/gpt-oss-120b"
+
+# Per-million-token rates in USD
 PRICING: dict[str, dict[str, float]] = {
     CHEAP: {
-        "input": float(os.getenv("PRICE_CHEAP_IN", "0.10")),
-        "output": float(os.getenv("PRICE_CHEAP_OUT", "0.50")),
+        "input": float(os.getenv("PRICE_CHEAP_IN", "0.05")),
+        "output": float(os.getenv("PRICE_CHEAP_OUT", "0.08")),
     },
     EXPENSIVE: {
-        "input": float(os.getenv("PRICE_EXPENSIVE_IN", "0.15")),
-        "output": float(os.getenv("PRICE_EXPENSIVE_OUT", "0.75")),
+        "input": float(os.getenv("PRICE_EXPENSIVE_IN", "0.59")),
+        "output": float(os.getenv("PRICE_EXPENSIVE_OUT", "0.79")),
+    },
+    MODEL_FAST: {
+        "input": 0.05,
+        "output": 0.08,
+    },
+    MODEL_BALANCED: {
+        "input": 0.59,
+        "output": 0.79,
+    },
+    MODEL_REASONING: {
+        "input": 0.59,
+        "output": 0.79,
+    },
+    MODEL_CODE: {
+        "input": 0.20,
+        "output": 0.20,
+    },
+    LEGACY_CHEAP: {
+        "input": 0.10,
+        "output": 0.50,
+    },
+    LEGACY_EXPENSIVE: {
+        "input": 0.15,
+        "output": 0.75,
     },
 }
+
+def map_category_to_model(category: str) -> str:
+    """Map a complexity or domain category to the optimal model from the fleet."""
+    cat = (category or "").lower()
+    if "code" in cat:
+        return MODEL_CODE
+    if "reasoning" in cat or "math" in cat or "logic" in cat:
+        return MODEL_REASONING
+    if "simple" in cat:
+        return MODEL_FAST
+    if "moderate" in cat:
+        return MODEL_BALANCED
+    if "complex" in cat:
+        return MODEL_REASONING
+    return MODEL_BALANCED
 
 #: Confidence below which a `moderate` query is escalated to the expensive model.
 #: Tuned empirically -- see `eval/sweep_threshold.py` and the Pareto curve in RESULTS.md.

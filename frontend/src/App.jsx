@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from './api'
+import { Navbar } from './components/Navbar'
+import { LandingHero } from './components/LandingHero'
+import { ChatPanel } from './components/ChatPanel'
 import { HeroStrip } from './components/HeroStrip'
 import { RequestFeed } from './components/RequestFeed'
 import {
@@ -12,9 +15,10 @@ import { ControlPanel } from './components/ControlPanel'
 import { useInterval } from './useInterval'
 import './App.css'
 
-const POLL_MS = 2000
+const POLL_MS = 2500
 
 export default function App() {
+  const [tab, setTab] = useState('landing') // 'landing' | 'dashboard' | 'chat'
   const [stats, setStats] = useState(null)
   const [recent, setRecent] = useState([])
   const [health, setHealth] = useState(null)
@@ -42,7 +46,7 @@ export default function App() {
       const drift = await api.drift()
       setDriftHistory((prev) => [...prev, { psi: drift.max_psi ?? drift.psi ?? 0 }].slice(-40))
     } catch {
-      // /drift ships in a later block; the chart just stays empty until then.
+      // /drift endpoint fallback
     }
   }, [])
 
@@ -55,32 +59,50 @@ export default function App() {
   useInterval(refreshDrift, POLL_MS * 2)
 
   return (
-    <div className="app">
-      <header>
-        <h1>SmartRoute</h1>
-        <span className="subtitle">LLM gateway with learned model routing</span>
-        {error && <span className="error-banner">⚠ {error}</span>}
-      </header>
+    <div className="app-shell">
+      <Navbar
+        activeTab={tab}
+        onSelectTab={setTab}
+        health={health}
+        error={error}
+      />
 
-      <HeroStrip stats={stats} modelInfo={health?.model} />
+      {tab === 'landing' && (
+        <div className="page">
+          <LandingHero
+            onLaunchChat={() => setTab('chat')}
+            onOpenDashboard={() => setTab('dashboard')}
+          />
+        </div>
+      )}
 
-      <div className="grid">
-        <RequestFeed rows={recent} />
-        <ControlPanel onRequestServed={refresh} onRefreshDrift={refreshDrift} />
-      </div>
+      {tab === 'dashboard' && (
+        <div className="page">
+          <HeroStrip stats={stats} modelInfo={health?.model} />
 
-      <div className="grid charts-grid">
-        <CostSavedChart timeline={stats?.timeline ?? []} />
-        <LatencyByModelChart byModel={stats?.by_model ?? []} />
-        <RoutingDistributionChart byLabel={stats?.by_label ?? []} />
-        <DriftChart history={driftHistory} />
-      </div>
+          <div className="dash-grid">
+            <RequestFeed rows={recent} />
+            <ControlPanel onRequestServed={refresh} onRefreshDrift={refreshDrift} />
+          </div>
 
-      <footer>
-        provider: {health?.provider ?? '—'} · threshold: {health?.threshold ?? '—'} · model:{' '}
-        {health?.model
-          ? `${health.model.alias} v${health.model.version} (${health.model.source})`
-          : '—'}
+          <div className="charts-row">
+            <CostSavedChart timeline={stats?.timeline ?? []} />
+            <LatencyByModelChart byModel={stats?.by_model ?? []} />
+            <RoutingDistributionChart byLabel={stats?.by_label ?? []} />
+            <DriftChart history={driftHistory} />
+          </div>
+        </div>
+      )}
+
+      {tab === 'chat' && (
+        <ChatPanel onRequestServed={refresh} />
+      )}
+
+      <footer className="app-footer">
+        SmartRoute Gateway · Provider: <strong style={{ color: 'var(--text)' }}>{health?.provider ?? 'Groq'}</strong> · Active Policy: <strong style={{ color: 'var(--text)' }}>Hybrid (ML + SLM)</strong> · Model:{' '}
+        <strong style={{ color: 'var(--text)' }}>
+          {health?.model ? `${health.model.alias} v${health.model.version}` : 'LinearSVC-v1'}
+        </strong>
       </footer>
     </div>
   )

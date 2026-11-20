@@ -60,7 +60,10 @@ class MockProvider:
         seed = int(hashlib.sha256(f"{model}:{prompt}".encode()).hexdigest()[:8], 16)
         rng = random.Random(seed)
 
-        latency_s = (profile["base_ms"] + rng.random() * profile["jitter_ms"]) / 1000
+        if os.getenv("FAST_MOCK") == "true" or "PYTEST_CURRENT_TEST" in os.environ:
+            latency_s = 0.0
+        else:
+            latency_s = (profile["base_ms"] + rng.random() * profile["jitter_ms"]) / 1000
         started = time.perf_counter()
         await asyncio.sleep(latency_s)
 
@@ -102,20 +105,16 @@ class GroqProvider:
 
     async def complete(self, model: str, prompt: str, max_tokens: int | None = None) -> Completion:
         started = time.perf_counter()
-        response = await self._client.post(
-            "/chat/completions",
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens or settings.max_output_tokens,
-                "temperature": 0.2,
-                # gpt-oss is a reasoning model: by default it can spend the entire
-                # max_tokens budget on hidden chain-of-thought and return empty
-                # `content` with finish_reason="length". Capping reasoning effort
-                # keeps the budget for the answer that actually gets returned.
-                "reasoning_effort": "low",
-            },
-        )
+        body = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens or settings.max_output_tokens,
+            "temperature": 0.2,
+        }
+        if "gpt-oss" in model:
+            body["reasoning_effort"] = "low"
+
+        response = await self._client.post("/chat/completions", json=body)
         self.last_rate_limit = {
             key: value
             for key, value in response.headers.items()
