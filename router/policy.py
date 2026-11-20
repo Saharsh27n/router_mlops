@@ -60,6 +60,7 @@ PRICING: dict[str, dict[str, float]] = {
     },
 }
 
+
 def map_category_to_model(category: str) -> str:
     """Map a complexity or domain category to the optimal model from the fleet."""
     cat = (category or "").lower()
@@ -74,6 +75,7 @@ def map_category_to_model(category: str) -> str:
     if "complex" in cat:
         return MODEL_REASONING
     return MODEL_BALANCED
+
 
 #: Confidence below which a `moderate` query is escalated to the expensive model.
 #: Tuned empirically -- see `eval/sweep_threshold.py` and the Pareto curve in RESULTS.md.

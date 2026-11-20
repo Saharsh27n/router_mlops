@@ -1,9 +1,6 @@
 name: CD
 
-# Publishes the gateway image to GHCR on every push to main that passes CI. Separate
-# from ci.yml deliberately: CD should never run on a PR from a fork (which could try
-# to publish an image under this repo's name), and gating on CI's conclusion here
-# keeps that boundary explicit rather than relying on workflow ordering.
+# Standalone CD trigger: publishes both images to GHCR on workflow_run or manual dispatch
 on:
   workflow_run:
     workflows: ["CI"]

@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   lint:
     name: Lint
@@ -64,13 +68,13 @@ jobs:
           if-no-files-found: warn
 
   docker:
-    name: Docker build
+    name: Docker build, test & publish
     runs-on: ubuntu-latest
     needs: [lint, test]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build gateway image
+      - name: Build gateway image for testing
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -97,3 +101,45 @@ jobs:
             -d '{"query":"Who wrote Pride and Prejudice?"}' \
             | tee /dev/stderr | grep -q 'gpt-oss-20b'
           docker rm -f gw
+
+      # Publish to GitHub Container Registry (GHCR) when pushed to main
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute lowercase image names
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        id: image_names
+        run: |
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "gateway=ghcr.io/${OWNER}/smartroute-gateway" >> "$GITHUB_OUTPUT"
+          echo "frontend=ghcr.io/${OWNER}/smartroute-frontend" >> "$GITHUB_OUTPUT"
+
+      - name: Publish gateway to GHCR
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: gateway/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image_names.outputs.gateway }}:latest
+            ${{ steps.image_names.outputs.gateway }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publish frontend to GHCR
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ steps.image_names.outputs.frontend }}:latest
+            ${{ steps.image_names.outputs.frontend }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -68,7 +68,7 @@ class ChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=8000)
     strategy: str = Field(
         default="hybrid",
-        description="Routing strategy: 'hybrid' (ML + SLM fallback), 'ml_fast' (ML only), or 'llm_semantic' (SLM only).",
+        description="Routing strategy: 'hybrid' (ML+SLM), 'ml_fast' (ML), or 'llm_semantic'.",
     )
     threshold: float | None = Field(
         default=None,

@@ -48,4 +48,6 @@ def client_no_auth(client):
 def pytest_sessionfinish(session, exitstatus):
     """Ensure immediate process exit on Windows to avoid lingering daemon thread hangs."""
     import os
-    os._exit(exitstatus)
+
+    if os.name == "nt":
+        os._exit(exitstatus)

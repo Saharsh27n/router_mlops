@@ -1,10 +1,10 @@
-"""Hybrid Router: Multi-tier routing combining fast statistical ML with SLM semantic fallback.
+"""Hybrid Router: Multi-tier routing combining fast statistical ML with SLM fallback.
 
 Architecture:
   - Tier 1: Fast Scikit-learn Classifier (<3ms, MLflow @champion)
-  - Tier 2: SLM-Judge (Small Language Model fallback when Tier 1 confidence is in the ambiguous zone)
+  - Tier 2: SLM-Judge (Small Language Model fallback when Tier 1 is ambiguous)
   - Strategy Selection:
-      * 'hybrid': ML first; escalate to SLM-Judge only when ambiguous (40% - 65% confidence).
+      * 'hybrid': ML first; escalate to SLM-Judge only when ambiguous (40% - 65% conf).
       * 'ml_fast': Sub-millisecond statistical routing only.
       * 'llm_semantic': Zero-shot SLM intent & complexity classifier.
 """
@@ -90,7 +90,9 @@ class HybridRouter:
 
         # Strategy: 'hybrid'
         # Check if Tier 1 is ambiguous (confidence in ambiguous zone or label is moderate)
-        is_ambiguous = (AMBIGUOUS_LOW <= ml_confidence <= AMBIGUOUS_HIGH) or (ml_label == "moderate" and ml_confidence < active_threshold + 0.05)
+        is_ambiguous = (AMBIGUOUS_LOW <= ml_confidence <= AMBIGUOUS_HIGH) or (
+            ml_label == "moderate" and ml_confidence < active_threshold + 0.05
+        )
 
         if not is_ambiguous:
             decision = policy.decide(ml_label, ml_confidence, active_threshold)
@@ -105,9 +107,20 @@ class HybridRouter:
             )
 
         # Tier 2: Ambiguity detected -> escalate to SLM-Judge
-        log.info("Tier-1 ambiguous (label=%s, conf=%.2f) -> escalating to SLM-Judge", ml_label, ml_confidence)
+        log.info(
+            "Tier-1 ambiguous (label=%s, conf=%.2f) -> escalating to SLM-Judge",
+            ml_label,
+            ml_confidence,
+        )
         try:
-            slm_result = await self._route_slm(query, provider_pool, started, strategy="hybrid", ml_fallback_label=ml_label, ml_fallback_conf=ml_confidence)
+            slm_result = await self._route_slm(
+                query,
+                provider_pool,
+                started,
+                strategy="hybrid",
+                ml_fallback_label=ml_label,
+                ml_fallback_conf=ml_confidence,
+            )
             return slm_result
         except Exception as exc:
             log.warning("SLM-Judge failed (%s); falling back to Tier-1 ML decision", exc)
